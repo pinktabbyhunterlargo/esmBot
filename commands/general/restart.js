@@ -10,6 +10,8 @@ class RestartCommand extends Command {
     await this.message.channel.createMessage(Object.assign({
       content: "esmBot is restarting."
     }, this.reference));
+    console.log("Seeing this \"Command failed with exit code 1.\" with pnpm?");
+    console.log("This is intended for use with process managers to restart automatically.");
     process.exit(1);
   }
 
