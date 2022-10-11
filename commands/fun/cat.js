@@ -9,9 +9,9 @@ class CatCommand extends Command {
       controller.abort();
     }, 15000);
     try {
-      const data = await request("https://projectlounge.pw/cta/", { method: "HEAD", signal: controller.signal });
+      const data = await request("https://files.projectlounge.pw/cta/", { method: "HEAD", signal: controller.signal });
       clearTimeout(timeout);
-      return data.headers.location;
+      return `https://files.projectlounge.pw${data.headers.location}`;
     } catch (e) {
       if (e.name === "AbortError") {
         this.success = false;
