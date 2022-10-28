@@ -1,6 +1,6 @@
 import { request } from "undici";
 import Command from "../../classes/command.js";
-const fs = require('fs');
+import fs from "node:fs";
 function getRandomInt(max) {
   return Math.floor(Math.random() * max);
 } //thanks mozilla
