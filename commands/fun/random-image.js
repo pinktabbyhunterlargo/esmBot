@@ -8,7 +8,7 @@ function getRandomInt(max) {
 class FilePostCommand extends Command {
   async run() {
     const imgFiles = new Array();
-    fs.readdirSync(IMGDIR).forEach(file => {
+    fs.readdirSync(process.env.IMGDIR).forEach(file => {
       imgFiles.push(file);
     });
     const baseUrl="OI MATE <@" + process.env.OWNER + "> FINISH SETTING UP YOUR BOT NOW "
