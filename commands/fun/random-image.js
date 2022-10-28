@@ -1,5 +1,3 @@
-import { randomInt } from "crypto";
-import { random } from "node-emoji";
 import { request } from "undici";
 import Command from "../../classes/command.js";
 const fs = require('fs');
