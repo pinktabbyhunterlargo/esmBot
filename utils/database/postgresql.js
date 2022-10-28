@@ -7,7 +7,8 @@ const sql = Postgres(process.env.DB);
 const psqlUpdates = [
   "", // reserved
   "CREATE TABLE IF NOT EXISTS settings ( id smallint PRIMARY KEY, version integer NOT NULL, CHECK(id = 1) );\nALTER TABLE guilds ADD COLUMN accessed timestamp;",
-  "ALTER TABLE guilds DROP COLUMN accessed"
+  "ALTER TABLE guilds DROP COLUMN accessed",
+  "ALTER TABLE settings ADD COLUMN broadcast text"
 ];
 
 export async function setup() {
@@ -56,7 +57,7 @@ export async function upgrade(logger) {
         while (version < (psqlUpdates.length - 1)) {
           version++;
           logger.warn(`Running version ${version} update script (${psqlUpdates[version]})...`);
-          await db`${psqlUpdates[version]}`;
+          await db.unsafe(psqlUpdates[version]);
         }
       });
       const ver = psqlUpdates.length - 1;
@@ -104,6 +105,15 @@ export async function removeTag(name, guild) {
   await sql`DELETE FROM tags WHERE guild_id = ${guild.id} AND name = ${name}`;
 }
 
+export async function setBroadcast(msg) {
+  await sql`UPDATE settings SET broadcast = ${msg} WHERE id = 1`;
+}
+
+export async function getBroadcast() {
+  const result = await sql`SELECT broadcast FROM settings WHERE id = 1`;
+  return result[0].broadcast;
+}
+
 export async function disableCommand(guild, command) {
   const guildDB = await this.getGuild(guild);
   await sql`UPDATE guilds SET disabled_commands = ${(guildDB.disabled_commands ? [...guildDB.disabled_commands, command] : [command]).filter((v) => !!v)} WHERE guild_id = ${guild}`;
@@ -147,11 +157,11 @@ export async function addGuild(guild) {
   const query = await this.getGuild(guild);
   if (query) return query;
   try {
-    await sql`INSERT INTO guilds ${sql({ guild_id: guild.id, prefix: process.env.PREFIX, disabled: [], disabled_commands: [] })}`;
+    await sql`INSERT INTO guilds ${sql({ guild_id: guild, prefix: process.env.PREFIX, disabled: [], disabled_commands: [] })}`;
   } catch (e) {
-    logger.error(`Failed to register guild ${guild.id}: ${e}`);
+    logger.error(`Failed to register guild ${guild}: ${e}`);
   }
-  return await this.getGuild(guild.id);
+  return await this.getGuild(guild);
 }
 
 export async function fixGuild(guild) {

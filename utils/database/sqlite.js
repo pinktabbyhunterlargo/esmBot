@@ -7,7 +7,8 @@ const connection = sqlite3(process.env.DB.replace("sqlite://", ""));
 const sqliteUpdates = [
   "", // reserved
   "ALTER TABLE guilds ADD COLUMN accessed int",
-  "ALTER TABLE guilds DROP COLUMN accessed"
+  "ALTER TABLE guilds DROP COLUMN accessed",
+  "CREATE TABLE IF NOT EXISTS settings ( id smallint PRIMARY KEY, broadcast VARCHAR, CHECK(id = 1) );\nINSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;"
 ];
 
 export async function setup() {
@@ -53,7 +54,9 @@ export async function upgrade(logger) {
       while (version < (sqliteUpdates.length - 1)) {
         version++;
         logger.warn(`Running version ${version} update script (${sqliteUpdates[version]})...`);
-        connection.prepare(sqliteUpdates[version]).run();
+        for (const statement of sqliteUpdates[version].split("\n")) {
+          connection.prepare(statement).run();
+        }
       }
       connection.pragma(`user_version = ${version}`); // insecure, but the normal templating method doesn't seem to work here
       connection.prepare("COMMIT").run();
@@ -149,6 +152,15 @@ export async function removeTag(name, guild) {
 
 export async function editTag(name, content, guild) {
   connection.prepare("UPDATE tags SET content = ?, author = ? WHERE guild_id = ? AND name = ?").run(content.content, content.author, guild.id, name);
+}
+
+export async function setBroadcast(msg) {
+  connection.prepare("UPDATE settings SET broadcast = ? WHERE id = 1").run(msg);
+}
+
+export async function getBroadcast() {
+  const result = connection.prepare("SELECT broadcast FROM settings WHERE id = 1").all();
+  return result[0].broadcast;
 }
 
 export async function setPrefix(prefix, guild) {

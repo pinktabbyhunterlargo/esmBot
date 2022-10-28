@@ -6,7 +6,7 @@ class HostCommand extends MusicCommand {
     this.success = false;
     if (!this.guild) return "This command only works in servers!";
     if (!this.member.voiceState) return "You need to be in a voice channel first!";
-    if (!this.guild.members.get(this.client.user.id).voiceState) return "I'm not in a voice channel!";
+    if (!this.guild.voiceStates.has(this.client.user.id)) return "I'm not in a voice channel!";
     if (!this.connection) return "I haven't completely connected yet!";
     if (this.connection.host !== this.author.id && !process.env.OWNER.split(",").includes(this.connection.host)) return "Only the current voice session host can choose another host!";
     const input = this.options.user ?? this.args.join(" ");
@@ -34,7 +34,7 @@ class HostCommand extends MusicCommand {
       }
       if (!user) return "I can't find that user!";
       if (user.bot) return "This is illegal, you know.";
-      const member = this.guild ? this.guild.members.get(user.id) : undefined;
+      const member = this.guild.members.get(user.id);
       if (!member) return "That user isn't in this server!";
       const object = this.connection;
       object.host = member.id;
@@ -42,7 +42,7 @@ class HostCommand extends MusicCommand {
       this.success = true;
       return `🔊 ${member.mention} is the new voice channel host.`;
     } else {
-      const member = this.guild ? this.guild.members.get(players.get(this.guild.id).host) : undefined;
+      const member = this.guild.members.get(players.get(this.guild.id).host);
       this.success = true;
       return `🔊 The current voice channel host is **${member?.username}#${member?.discriminator}**.`;
     }
