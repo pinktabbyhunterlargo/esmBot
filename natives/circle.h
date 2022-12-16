@@ -1,5 +1,9 @@
 #pragma once
 
-#include <napi.h>
+#include "common.h"
+#include <map>
 
-Napi::Value Circle(const Napi::CallbackInfo& info);
+using std::map;
+using std::string;
+
+char* Circle(string type, char* BufferData, size_t BufferLength, ArgumentMap Arguments, size_t* DataSize);

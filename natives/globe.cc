@@ -10,7 +10,7 @@ Napi::Value Globe(const Napi::CallbackInfo &info) {
   Napi::Object result = Napi::Object::New(env);
 
   try {
-    Napi::Object obj = info[0].As<Napi::Object>();
+    Napi::Object obj = info[1].As<Napi::Object>();
     Napi::Buffer<char> data = obj.Get("data").As<Napi::Buffer<char>>();
     string type = obj.Get("type").As<Napi::String>().Utf8Value();
     string basePath = obj.Get("basePath").As<Napi::String>().Utf8Value();
@@ -23,7 +23,8 @@ Napi::Value Globe(const Napi::CallbackInfo &info) {
             type == "gif" ? options->set("n", -1)->set("access", "sequential")
                           : options)
             .colourspace(VIPS_INTERPRETATION_sRGB);
-    if (!in.has_alpha()) in = in.bandjoin(255);
+    if (!in.has_alpha())
+      in = in.bandjoin(255);
 
     int width = in.width();
     int pageHeight = vips_image_get_page_height(in.get_image());

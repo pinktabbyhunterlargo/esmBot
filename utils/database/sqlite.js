@@ -1,5 +1,4 @@
-import * as collections from "../collections.js";
-import * as logger from "../logger.js";
+import { commands, messageCommands, disabledCache, disabledCmdCache, prefixCache } from "../collections.js";
 
 import sqlite3 from "better-sqlite3";
 const connection = sqlite3(process.env.DB.replace("sqlite://", ""));
@@ -43,27 +42,16 @@ const updates = [
 ];
 
 export async function setup() {
-  const counts = connection.prepare("SELECT * FROM counts").all();
-  const merged = new Map([...collections.commands, ...collections.messageCommands]);
-
-  if (!counts || counts.length === 0) {
-    for (const command of merged.keys()) {
+  const existingCommands = connection.prepare("SELECT command FROM counts").all().map(x => x.command);
+  const commandNames = [...commands.keys(), ...messageCommands.keys()];
+  for (const command of existingCommands) {
+    if (!commandNames.includes(command)) {
+      connection.prepare("DELETE FROM counts WHERE command = ?").run(command);
+    }
+  }
+  for (const command of commandNames) {
+    if (!existingCommands.includes(command)) {
       connection.prepare("INSERT INTO counts (command, count) VALUES (?, ?)").run(command, 0);
-    }
-  } else {
-    const exists = [];
-    for (const command of merged.keys()) {
-      const count = connection.prepare("SELECT * FROM counts WHERE command = ?").get(command);
-      if (!count) {
-        connection.prepare("INSERT INTO counts (command, count) VALUES (?, ?)").run(command, 0);
-      }
-      exists.push(command);
-    }
-
-    for (const { command } of counts) {
-      if (!exists.includes(command)) {
-        connection.prepare("DELETE FROM counts WHERE command = ?").run(command);
-      }
     }
   }
 }
@@ -78,7 +66,7 @@ export async function upgrade(logger) {
     let version = connection.pragma("user_version", { simple: true });
     const latestVersion = updates.length - 1;
     if (version == 0) {
-      logger.info(`Initializing SQLite database...`);
+      logger.info("Initializing SQLite database...");
       connection.exec(schema);
     } else if (version < latestVersion) {
       logger.info(`Migrating SQLite database at ${process.env.DB}, which is currently at version ${version}...`);
@@ -102,19 +90,6 @@ export async function upgrade(logger) {
   connection.exec("COMMIT");
 }
 
-export async function fixGuild(guild) {
-  let guildDB;
-  try {
-    guildDB = connection.prepare("SELECT * FROM guilds WHERE guild_id = ?").get(guild);
-  } catch {
-    connection.prepare("CREATE TABLE guilds ( guild_id VARCHAR(30) NOT NULL PRIMARY KEY, prefix VARCHAR(15) NOT NULL, disabled text NOT NULL, disabled_commands text NOT NULL )").run();
-  }
-  if (!guildDB) {
-    logger.log(`Registering guild database entry for guild ${guild}...`);
-    return await this.addGuild(guild);
-  }
-}
-
 export async function addCount(command) {
   connection.prepare("UPDATE counts SET count = count + 1 WHERE command = ?").run(command);
 }
@@ -131,27 +106,27 @@ export async function getCounts() {
 export async function disableCommand(guild, command) {
   const guildDB = await this.getGuild(guild);
   connection.prepare("UPDATE guilds SET disabled_commands = ? WHERE guild_id = ?").run(JSON.stringify((guildDB.disabledCommands ? [...JSON.parse(guildDB.disabledCommands), command] : [command]).filter((v) => !!v)), guild);
-  collections.disabledCmdCache.set(guild, guildDB.disabled_commands ? [...JSON.parse(guildDB.disabledCommands), command] : [command].filter((v) => !!v));
+  disabledCmdCache.set(guild, guildDB.disabled_commands ? [...JSON.parse(guildDB.disabledCommands), command] : [command].filter((v) => !!v));
 }
 
 export async function enableCommand(guild, command) {
   const guildDB = await this.getGuild(guild);
   const newDisabled = guildDB.disabledCommands ? JSON.parse(guildDB.disabledCommands).filter(item => item !== command) : [];
   connection.prepare("UPDATE guilds SET disabled_commands = ? WHERE guild_id = ?").run(JSON.stringify(newDisabled), guild);
-  collections.disabledCmdCache.set(guild, newDisabled);
+  disabledCmdCache.set(guild, newDisabled);
 }
 
 export async function disableChannel(channel) {
   const guildDB = await this.getGuild(channel.guildID);
   connection.prepare("UPDATE guilds SET disabled = ? WHERE guild_id = ?").run(JSON.stringify([...JSON.parse(guildDB.disabled), channel.id]), channel.guildID);
-  collections.disabledCache.set(channel.guildID, [...JSON.parse(guildDB.disabled), channel.id]);
+  disabledCache.set(channel.guildID, [...JSON.parse(guildDB.disabled), channel.id]);
 }
 
 export async function enableChannel(channel) {
   const guildDB = await this.getGuild(channel.guildID);
   const newDisabled = JSON.parse(guildDB.disabled).filter(item => item !== channel.id);
   connection.prepare("UPDATE guilds SET disabled = ? WHERE guild_id = ?").run(JSON.stringify(newDisabled), channel.guildID);
-  collections.disabledCache.set(channel.guildID, newDisabled);
+  disabledCache.set(channel.guildID, newDisabled);
 }
 
 export async function getTag(guild, tag) {
@@ -198,26 +173,22 @@ export async function getBroadcast() {
 
 export async function setPrefix(prefix, guild) {
   connection.prepare("UPDATE guilds SET prefix = ? WHERE guild_id = ?").run(prefix, guild.id);
-  collections.prefixCache.set(guild.id, prefix);
-}
-
-export async function addGuild(guild) {
-  const query = await this.getGuild(guild);
-  if (query) return query;
-  const guildObject = {
-    id: guild,
-    prefix: process.env.PREFIX,
-    disabled: "[]",
-    disabledCommands: "[]"
-  };
-  connection.prepare("INSERT INTO guilds (guild_id, prefix, disabled, disabled_commands) VALUES (@id, @prefix, @disabled, @disabledCommands)").run(guildObject);
-  return guildObject;
+  prefixCache.set(guild.id, prefix);
 }
 
 export async function getGuild(query) {
-  try {
-    return connection.prepare("SELECT * FROM guilds WHERE guild_id = ?").get(query);
-  } catch {
-    return;
-  }
+  let guild;
+  connection.transaction(() => {   
+    guild = connection.prepare("SELECT * FROM guilds WHERE guild_id = ?").get(query);
+    if (!guild) {
+      guild = {
+        id: query,
+        prefix: process.env.PREFIX,
+        disabled: "[]",
+        disabledCommands: "[]"
+      };
+      connection.prepare("INSERT INTO guilds (guild_id, prefix, disabled, disabled_commands) VALUES (@id, @prefix, @disabled, @disabledCommands)").run(guild);
+    }
+  })();
+  return guild;
 }
