@@ -51,7 +51,7 @@
 
 using namespace std;
 
-std::map<std::string, char* (*)(string type, char* BufferData, size_t BufferLength, ArgumentMap Arguments, size_t* DataSize)> FunctionMap = {
+std::map<std::string, char* (*)(string *type, char* BufferData, size_t BufferLength, ArgumentMap Arguments, size_t* DataSize)> FunctionMap = {
   {"blur", &Blur},
 	{"caption", &Caption},
 	{"captionTwo", &CaptionTwo},
@@ -63,15 +63,8 @@ std::map<std::string, char* (*)(string type, char* BufferData, size_t BufferLeng
 	{"flag", &Flag},
   {"flip", &Flip},
   {"freeze", &Freeze},
-  {"speed", &Speed},
-	{"uncaption", &Uncaption},
-  {"watermark", &Watermark}
-};
-
-std::map<std::string, Napi::Value (*)(const Napi::CallbackInfo &info)> OldFunctionMap = {
   {"gamexplain", Gamexplain},
   {"globe", Globe},
-  {"homebrew", Homebrew},
   {"invert", Invert},
   {"jpeg", Jpeg},
   {"magik", Magik},
@@ -83,15 +76,23 @@ std::map<std::string, Napi::Value (*)(const Napi::CallbackInfo &info)> OldFuncti
   {"reverse", Reverse},
   {"scott", Scott},
   {"snapchat", Snapchat},
-  {"sonic", Sonic},
+  {"speed", &Speed},
   {"spin", Spin},
+  {"squish", Squish},
   {"swirl", Swirl},
   {"tile", Tile},
   {"togif", ToGif},
   {"uncanny", Uncanny},
+	{"uncaption", &Uncaption},
   {"wall", Wall},
+  {"watermark", &Watermark},
   {"whisper", Whisper},
   {"zamn", Zamn}
+};
+
+std::map<std::string, char* (*)(string *type, ArgumentMap Arguments, size_t* DataSize)> NoInputFunctionMap = {
+  {"homebrew", Homebrew},
+  {"sonic", Sonic}
 };
 
 bool isNapiValueInt(Napi::Env& env, Napi::Value& num) {
@@ -105,15 +106,14 @@ bool isNapiValueInt(Napi::Env& env, Napi::Value& num) {
       .Value();
 }
 
-Napi::Value NewProcessImage(const Napi::CallbackInfo &info) {
+Napi::Value ProcessImage(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   Napi::Object result = Napi::Object::New(env);
 
   try {
     string command = info[0].As<Napi::String>().Utf8Value();
     Napi::Object obj = info[1].As<Napi::Object>();
-    Napi::Buffer<char> data = obj.Get("data").As<Napi::Buffer<char>>();
-    string type = obj.Get("type").As<Napi::String>().Utf8Value();
+    string type = obj.Has("type") ? obj.Get("type").As<Napi::String>().Utf8Value() : NULL;
 
     Napi::Array properties = obj.GetPropertyNames();
 
@@ -145,7 +145,13 @@ Napi::Value NewProcessImage(const Napi::CallbackInfo &info) {
     }
 
     size_t length = 0;
-    char* buf = FunctionMap.at(command)(type, data.Data(), data.Length(), Arguments, &length);
+    char* buf;
+    if (obj.Has("data")) {
+      Napi::Buffer<char> data = obj.Has("data") ? obj.Get("data").As<Napi::Buffer<char>>() : Napi::Buffer<char>::New(env, 0);
+      buf = FunctionMap.at(command)(&type, data.Data(), data.Length(), Arguments, &length);
+    } else {
+      buf = NoInputFunctionMap.at(command)(&type, Arguments, &length);
+    }
     result.Set("data", Napi::Buffer<char>::New(env, buf, length, [](Napi::Env env, void* data) {
       free(data);
     }));
@@ -157,25 +163,6 @@ Napi::Value NewProcessImage(const Napi::CallbackInfo &info) {
   }
 
   return result;
-}
-
-Napi::Value OldProcessImage(std::string FunctionName, const Napi::CallbackInfo &info) {
-  return OldFunctionMap.at(FunctionName)(info);
-}
-
-Napi::Value ProcessImage(const Napi::CallbackInfo &info) { // janky solution for gradual adoption
-  Napi::Env env = info.Env();
-
-  string command = info[0].As<Napi::String>().Utf8Value();
-  
-  if (MAP_HAS(FunctionMap, command)) {
-    return NewProcessImage(info);
-  } else if (MAP_HAS(OldFunctionMap, command)) {
-    return OldProcessImage(command, info);
-  } else {
-    Napi::Error::New(env, "Invalid command").ThrowAsJavaScriptException();
-    return env.Null();
-  }
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports){
@@ -193,7 +180,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports){
       arr[i] = Napi::String::New(env, imap.first);
       i++;
     }
-    for(auto const& imap: OldFunctionMap) {
+    for (auto const& imap: NoInputFunctionMap) {
       Napi::HandleScope scope(env);
       arr[i] = Napi::String::New(env, imap.first);
       i++;
